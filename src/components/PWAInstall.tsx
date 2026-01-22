@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Download, X } from 'lucide-react'
 
 interface BeforeInstallPromptEvent extends Event {
@@ -8,15 +8,27 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
+function isDismissed(): boolean {
+  if (typeof window === 'undefined') return true
+  const dismissedUntil = localStorage.getItem('pwa-banner-dismissed-until')
+  return dismissedUntil ? Date.now() < parseInt(dismissedUntil) : false
+}
+
 export default function PWAInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [showInstallBanner, setShowInstallBanner] = useState(false)
   const [isInstalled, setIsInstalled] = useState(false)
+  const hasShownRef = useRef(false)
 
   useEffect(() => {
     // Verificar se já está instalado
     if (window.matchMedia('(display-mode: standalone)').matches) {
       setIsInstalled(true)
+      return
+    }
+
+    // Verificar se foi dismissado recentemente
+    if (isDismissed()) {
       return
     }
 
@@ -34,23 +46,31 @@ export default function PWAInstall() {
       e.preventDefault()
       setDeferredPrompt(e as BeforeInstallPromptEvent)
 
-      // Mostrar banner após 3 segundos
-      setTimeout(() => {
-        setShowInstallBanner(true)
-      }, 3000)
+      // Só mostrar banner se não foi dismissado e não mostrou ainda nesta sessão
+      if (!isDismissed() && !hasShownRef.current) {
+        hasShownRef.current = true
+        setTimeout(() => {
+          // Verificar novamente antes de mostrar
+          if (!isDismissed()) {
+            setShowInstallBanner(true)
+          }
+        }, 3000)
+      }
     }
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall)
 
     // Detectar quando foi instalado
-    window.addEventListener('appinstalled', () => {
+    const handleInstalled = () => {
       setIsInstalled(true)
       setShowInstallBanner(false)
       setDeferredPrompt(null)
-    })
+    }
+    window.addEventListener('appinstalled', handleInstalled)
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall)
+      window.removeEventListener('appinstalled', handleInstalled)
     }
   }, [])
 
@@ -72,14 +92,6 @@ export default function PWAInstall() {
     const dismissedUntil = Date.now() + 24 * 60 * 60 * 1000
     localStorage.setItem('pwa-banner-dismissed-until', dismissedUntil.toString())
   }
-
-  // Não mostrar se já foi descartado recentemente
-  useEffect(() => {
-    const dismissedUntil = localStorage.getItem('pwa-banner-dismissed-until')
-    if (dismissedUntil && Date.now() < parseInt(dismissedUntil)) {
-      setShowInstallBanner(false)
-    }
-  }, [])
 
   if (isInstalled || !showInstallBanner) return null
 
