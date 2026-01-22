@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Membro {
+  id              String     @id @default(cuid())
+  nome            String
+  foto            String?    @db.Text
+  nomePai         String?
+  nomeMae         String?
+  whatsapp        String
+  dataAniversario DateTime?
+  endereco        String?
+  grupoPequeno    Boolean    @default(false)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  presencas       Presenca[]
+}
+
+model Culto {
+  id        String     @id @default(cuid())
+  data      DateTime
+  horario   String
+  createdAt DateTime   @default(now())
+  presencas Presenca[]
+
+  @@unique([data, horario])
+}
+
+model Presenca {
+  id        String   @id @default(cuid())
+  membro    Membro   @relation(fields: [membroId], references: [id], onDelete: Cascade)
+  membroId  String
+  culto     Culto    @relation(fields: [cultoId], references: [id], onDelete: Cascade)
+  cultoId   String
+  presente  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@unique([membroId, cultoId])
+}
+
+model Usuario {
+  id       String @id @default(cuid())
+  nome     String
+  email    String @unique
+  senha    String
+  role     String @default("voluntario")
+}
