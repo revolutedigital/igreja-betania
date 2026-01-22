@@ -1,43 +1,63 @@
 import { prisma } from '@/lib/prisma'
-import { NextRequest, NextResponse } from 'next/server'
+import { createHandler, apiSuccess, apiError, logger } from '@/lib/api-utils'
+import { presencaSchema } from '@/lib/validations'
+import { z } from 'zod'
 
-export async function GET(request: NextRequest) {
-  try {
+export const GET = createHandler(
+  { rateLimit: true },
+  async (request, { ip }) => {
     const { searchParams } = new URL(request.url)
     const cultoId = searchParams.get('cultoId')
 
     if (!cultoId) {
-      return NextResponse.json(
-        { error: 'ID do culto é obrigatório' },
-        { status: 400 }
-      )
+      return apiError('ID do culto é obrigatório', 400)
     }
+
+    // Validar CUID
+    const validation = z.string().cuid().safeParse(cultoId)
+    if (!validation.success) {
+      return apiError('ID do culto inválido', 400)
+    }
+
+    logger.debug('Buscando presenças', { cultoId, ip })
 
     const presencas = await prisma.presenca.findMany({
       where: { cultoId },
-      include: { membro: true },
+      include: {
+        membro: {
+          select: {
+            id: true,
+            nome: true,
+            foto: true,
+            whatsapp: true,
+          }
+        }
+      },
     })
 
-    return NextResponse.json(presencas)
-  } catch (error) {
-    console.error('Erro ao buscar presenças:', error)
-    return NextResponse.json(
-      { error: 'Erro ao buscar presenças' },
-      { status: 500 }
-    )
+    return apiSuccess(presencas)
   }
-}
+)
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { membroId, cultoId, presente } = body
+export const POST = createHandler(
+  { rateLimit: true, schema: presencaSchema },
+  async (request, { body, ip }) => {
+    const { membroId, cultoId, presente } = body as z.infer<typeof presencaSchema>
 
-    if (!membroId || !cultoId) {
-      return NextResponse.json(
-        { error: 'ID do membro e do culto são obrigatórios' },
-        { status: 400 }
-      )
+    logger.info('Registrando presença', { membroId, cultoId, presente, ip })
+
+    // Verificar se membro e culto existem
+    const [membro, culto] = await Promise.all([
+      prisma.membro.findUnique({ where: { id: membroId } }),
+      prisma.culto.findUnique({ where: { id: cultoId } }),
+    ])
+
+    if (!membro) {
+      return apiError('Membro não encontrado', 404)
+    }
+
+    if (!culto) {
+      return apiError('Culto não encontrado', 404)
     }
 
     // Usa upsert para criar ou atualizar a presença
@@ -49,53 +69,60 @@ export async function POST(request: NextRequest) {
         },
       },
       update: {
-        presente: presente ?? true,
+        presente,
       },
       create: {
         membroId,
         cultoId,
-        presente: presente ?? true,
+        presente,
       },
+      include: {
+        membro: {
+          select: { id: true, nome: true }
+        }
+      }
     })
 
-    return NextResponse.json(presenca)
-  } catch (error) {
-    console.error('Erro ao registrar presença:', error)
-    return NextResponse.json(
-      { error: 'Erro ao registrar presença' },
-      { status: 500 }
-    )
-  }
-}
+    logger.info('Presença registrada', { id: presenca.id, presente: presenca.presente })
 
-export async function DELETE(request: NextRequest) {
-  try {
+    return apiSuccess(presenca)
+  }
+)
+
+export const DELETE = createHandler(
+  { rateLimit: true },
+  async (request, { ip }) => {
     const { searchParams } = new URL(request.url)
     const membroId = searchParams.get('membroId')
     const cultoId = searchParams.get('cultoId')
 
     if (!membroId || !cultoId) {
-      return NextResponse.json(
-        { error: 'ID do membro e do culto são obrigatórios' },
-        { status: 400 }
-      )
+      return apiError('ID do membro e do culto são obrigatórios', 400)
     }
 
-    await prisma.presenca.delete({
-      where: {
-        membroId_cultoId: {
-          membroId,
-          cultoId,
-        },
-      },
-    })
+    // Validar CUIDs
+    const membroValidation = z.string().cuid().safeParse(membroId)
+    const cultoValidation = z.string().cuid().safeParse(cultoId)
 
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error('Erro ao remover presença:', error)
-    return NextResponse.json(
-      { error: 'Erro ao remover presença' },
-      { status: 500 }
-    )
+    if (!membroValidation.success || !cultoValidation.success) {
+      return apiError('IDs inválidos', 400)
+    }
+
+    logger.info('Removendo presença', { membroId, cultoId, ip })
+
+    try {
+      await prisma.presenca.delete({
+        where: {
+          membroId_cultoId: {
+            membroId,
+            cultoId,
+          },
+        },
+      })
+
+      return apiSuccess({ deleted: true })
+    } catch {
+      return apiError('Presença não encontrada', 404)
+    }
   }
-}
+)

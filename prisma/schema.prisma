@@ -13,13 +13,19 @@ model Membro {
   foto            String?    @db.Text
   nomePai         String?
   nomeMae         String?
-  whatsapp        String
+  whatsapp        String     @unique
   dataAniversario DateTime?
   endereco        String?
   grupoPequeno    Boolean    @default(false)
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
   presencas       Presenca[]
+
+  // Índices para buscas frequentes
+  @@index([nome])
+  @@index([dataAniversario])
+  @@index([grupoPequeno])
+  @@index([createdAt])
 }
 
 model Culto {
@@ -30,6 +36,8 @@ model Culto {
   presencas Presenca[]
 
   @@unique([data, horario])
+  @@index([data])
+  @@index([createdAt])
 }
 
 model Presenca {
@@ -42,12 +50,52 @@ model Presenca {
   createdAt DateTime @default(now())
 
   @@unique([membroId, cultoId])
+  @@index([cultoId])
+  @@index([membroId])
+  @@index([presente])
+  @@index([createdAt])
 }
 
 model Usuario {
-  id       String @id @default(cuid())
-  nome     String
-  email    String @unique
-  senha    String
-  role     String @default("voluntario")
+  id        String   @id @default(cuid())
+  nome      String
+  email     String   @unique
+  senha     String
+  role      String   @default("voluntario")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role])
+  @@index([createdAt])
+}
+
+// Model para logs de auditoria
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String   // CREATE, UPDATE, DELETE, LOGIN, etc.
+  entity    String   // Membro, Presenca, Usuario, etc.
+  entityId  String?
+  userId    String?
+  userName  String?
+  details   String?  @db.Text
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([action])
+  @@index([entity])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Model para push subscriptions
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userId    String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }

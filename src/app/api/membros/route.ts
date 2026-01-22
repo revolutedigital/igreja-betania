@@ -1,10 +1,14 @@
 import { prisma } from '@/lib/prisma'
-import { NextRequest, NextResponse } from 'next/server'
+import { createHandler, apiSuccess, apiError, logger } from '@/lib/api-utils'
+import { membroSchema } from '@/lib/validations'
 
-export async function GET(request: NextRequest) {
-  try {
+export const GET = createHandler(
+  { rateLimit: true },
+  async (request, { ip }) => {
     const { searchParams } = new URL(request.url)
     const busca = searchParams.get('busca')
+
+    logger.info('Buscando membros', { busca, ip })
 
     const membros = await prisma.membro.findMany({
       where: busca
@@ -16,50 +20,64 @@ export async function GET(request: NextRequest) {
           }
         : undefined,
       orderBy: { nome: 'asc' },
+      select: {
+        id: true,
+        nome: true,
+        foto: true,
+        whatsapp: true,
+        dataAniversario: true,
+        endereco: true,
+        grupoPequeno: true,
+        nomePai: true,
+        nomeMae: true,
+        createdAt: true,
+      },
     })
 
-    return NextResponse.json(membros)
-  } catch (error) {
-    console.error('Erro ao buscar membros:', error)
-    return NextResponse.json(
-      { error: 'Erro ao buscar membros' },
-      { status: 500 }
-    )
+    return apiSuccess(membros)
   }
-}
+)
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
+export const POST = createHandler(
+  { rateLimit: true, schema: membroSchema },
+  async (request, { body, ip }) => {
+    const data = body as {
+      nome: string
+      foto?: string | null
+      nomePai?: string | null
+      nomeMae?: string | null
+      whatsapp: string
+      dataAniversario?: string | null
+      endereco?: string | null
+      grupoPequeno?: boolean
+    }
 
-    const { nome, foto, nomePai, nomeMae, whatsapp, dataAniversario, endereco, grupoPequeno } = body
+    logger.info('Criando membro', { nome: data.nome, ip })
 
-    if (!nome || !whatsapp) {
-      return NextResponse.json(
-        { error: 'Nome e WhatsApp são obrigatórios' },
-        { status: 400 }
-      )
+    // Verificar duplicado por WhatsApp
+    const existente = await prisma.membro.findFirst({
+      where: { whatsapp: data.whatsapp },
+    })
+
+    if (existente) {
+      return apiError('Já existe um membro com este WhatsApp', 409)
     }
 
     const membro = await prisma.membro.create({
       data: {
-        nome,
-        foto: foto || null,
-        nomePai: nomePai || null,
-        nomeMae: nomeMae || null,
-        whatsapp,
-        dataAniversario: dataAniversario ? new Date(dataAniversario) : null,
-        endereco: endereco || null,
-        grupoPequeno: grupoPequeno || false,
+        nome: data.nome,
+        foto: data.foto || null,
+        nomePai: data.nomePai || null,
+        nomeMae: data.nomeMae || null,
+        whatsapp: data.whatsapp,
+        dataAniversario: data.dataAniversario ? new Date(data.dataAniversario) : null,
+        endereco: data.endereco || null,
+        grupoPequeno: data.grupoPequeno || false,
       },
     })
 
-    return NextResponse.json(membro, { status: 201 })
-  } catch (error) {
-    console.error('Erro ao criar membro:', error)
-    return NextResponse.json(
-      { error: 'Erro ao criar membro' },
-      { status: 500 }
-    )
+    logger.info('Membro criado', { id: membro.id, nome: membro.nome })
+
+    return apiSuccess(membro, 201)
   }
-}
+)
