@@ -68,13 +68,15 @@ export default function PWAInstall() {
 
   const handleDismiss = () => {
     setShowInstallBanner(false)
-    // Não mostrar novamente nesta sessão
-    sessionStorage.setItem('pwa-banner-dismissed', 'true')
+    // Não mostrar novamente por 24 horas
+    const dismissedUntil = Date.now() + 24 * 60 * 60 * 1000
+    localStorage.setItem('pwa-banner-dismissed-until', dismissedUntil.toString())
   }
 
-  // Não mostrar se já foi descartado nesta sessão
+  // Não mostrar se já foi descartado recentemente
   useEffect(() => {
-    if (sessionStorage.getItem('pwa-banner-dismissed')) {
+    const dismissedUntil = localStorage.getItem('pwa-banner-dismissed-until')
+    if (dismissedUntil && Date.now() < parseInt(dismissedUntil)) {
       setShowInstallBanner(false)
     }
   }, [])

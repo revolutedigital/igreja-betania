@@ -35,17 +35,24 @@ export default function CadastroForm() {
 
   const startCamera = useCallback(async () => {
     try {
+      setShowCamera(true)
+      // Aguarda o DOM atualizar para ter o videoRef disponível
+      await new Promise(resolve => setTimeout(resolve, 100))
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' }
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } }
       })
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream
         streamRef.current = stream
+        // Aguarda o vídeo estar pronto para exibir
+        await videoRef.current.play()
       }
-      setShowCamera(true)
     } catch (err) {
       console.error('Erro ao acessar câmera:', err)
-      setError('Não foi possível acessar a câmera')
+      setError('Não foi possível acessar a câmera. Verifique as permissões.')
+      setShowCamera(false)
     }
   }, [])
 
@@ -164,7 +171,8 @@ export default function CadastroForm() {
               ref={videoRef}
               autoPlay
               playsInline
-              className="w-64 h-64 rounded-2xl object-cover shadow-lg"
+              muted
+              className="w-64 h-64 rounded-2xl object-cover shadow-lg bg-black"
             />
             <div className="flex gap-3">
               <button
