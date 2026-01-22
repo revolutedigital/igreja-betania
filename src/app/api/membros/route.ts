@@ -1,40 +1,72 @@
 import { prisma } from '@/lib/prisma'
 import { createHandler, apiSuccess, apiError, logger } from '@/lib/api-utils'
-import { membroSchema } from '@/lib/validations'
+import { membroSchema, parsePagination, createPaginatedResponse } from '@/lib/validations'
 
 export const GET = createHandler(
   { rateLimit: true },
   async (request, { ip }) => {
     const { searchParams } = new URL(request.url)
     const busca = searchParams.get('busca')
+    const pagination = parsePagination(searchParams)
+    const all = searchParams.get('all') === 'true' // Para chamada (precisa de todos)
 
-    logger.info('Buscando membros', { busca, ip })
+    logger.info('Buscando membros', { busca, pagination, all, ip })
 
-    const membros = await prisma.membro.findMany({
-      where: busca
-        ? {
-            nome: {
-              contains: busca,
-              mode: 'insensitive',
-            },
-          }
-        : undefined,
-      orderBy: { nome: 'asc' },
-      select: {
-        id: true,
-        nome: true,
-        foto: true,
-        whatsapp: true,
-        dataAniversario: true,
-        endereco: true,
-        grupoPequeno: true,
-        nomePai: true,
-        nomeMae: true,
-        createdAt: true,
-      },
-    })
+    const where = busca
+      ? {
+          nome: {
+            contains: busca,
+            mode: 'insensitive' as const,
+          },
+        }
+      : undefined
 
-    return apiSuccess(membros)
+    // Se all=true, retorna todos (para ChamadaGrid que precisa de todos)
+    if (all) {
+      const membros = await prisma.membro.findMany({
+        where,
+        orderBy: { nome: 'asc' },
+        select: {
+          id: true,
+          nome: true,
+          foto: true,
+          whatsapp: true,
+          dataAniversario: true,
+          endereco: true,
+          grupoPequeno: true,
+          nomePai: true,
+          nomeMae: true,
+          createdAt: true,
+        },
+      })
+
+      return apiSuccess(membros)
+    }
+
+    // Paginação para listagens administrativas
+    const [membros, total] = await Promise.all([
+      prisma.membro.findMany({
+        where,
+        orderBy: { nome: 'asc' },
+        skip: (pagination.page - 1) * pagination.limit,
+        take: pagination.limit,
+        select: {
+          id: true,
+          nome: true,
+          foto: true,
+          whatsapp: true,
+          dataAniversario: true,
+          endereco: true,
+          grupoPequeno: true,
+          nomePai: true,
+          nomeMae: true,
+          createdAt: true,
+        },
+      }),
+      prisma.membro.count({ where }),
+    ])
+
+    return apiSuccess(createPaginatedResponse(membros, total, pagination))
   }
 )
 

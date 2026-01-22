@@ -125,9 +125,9 @@ type HandlerContext = {
   ip: string
 }
 
-export function createHandler<T = unknown>(
+export function createHandler(
   options: HandlerOptions,
-  handler: (request: Request, context: HandlerContext) => Promise<NextResponse<ApiResponse<T>>>
+  handler: (request: Request, context: HandlerContext) => Promise<NextResponse>
 ) {
   return async (request: Request): Promise<NextResponse> => {
     const ip = getClientIP(request)

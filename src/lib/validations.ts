@@ -4,6 +4,35 @@ import { z } from 'zod'
 // SCHEMAS DE VALIDAÇÃO - ZOD
 // ============================================
 
+// Validação de senha forte
+const senhaSchema = z.string()
+  .min(8, 'Senha deve ter pelo menos 8 caracteres')
+  .max(128, 'Senha muito longa')
+  .regex(/[A-Z]/, 'Senha deve conter pelo menos uma letra maiúscula')
+  .regex(/[a-z]/, 'Senha deve conter pelo menos uma letra minúscula')
+  .regex(/[0-9]/, 'Senha deve conter pelo menos um número')
+  .regex(/[^A-Za-z0-9]/, 'Senha deve conter pelo menos um caractere especial')
+
+// Paginação
+export const paginationSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+})
+
+export type PaginationInput = z.infer<typeof paginationSchema>
+
+export interface PaginatedResponse<T> {
+  data: T[]
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+    hasNext: boolean
+    hasPrev: boolean
+  }
+}
+
 // Membro
 export const membroSchema = z.object({
   nome: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
@@ -33,14 +62,14 @@ export const cultoSchema = z.object({
 
 // Autenticação
 export const loginSchema = z.object({
-  email: z.string().email('Email inválido'),
-  senha: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
+  email: z.string().email('Email inválido').toLowerCase(),
+  senha: z.string().min(1, 'Senha obrigatória'),
 })
 
 export const registroSchema = z.object({
-  nome: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100),
-  email: z.string().email('Email inválido'),
-  senha: z.string().min(6, 'Senha deve ter pelo menos 6 caracteres'),
+  nome: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres').max(100).trim(),
+  email: z.string().email('Email inválido').toLowerCase(),
+  senha: senhaSchema,
   codigoAdmin: z.string().optional(),
 })
 
@@ -97,4 +126,37 @@ export function validateRequest<T>(schema: z.ZodSchema<T>, data: unknown): { suc
     return { success: false, error: errors }
   }
   return { success: true, data: result.data }
+}
+
+// Helper para paginação
+export function parsePagination(searchParams: URLSearchParams): PaginationInput {
+  const page = searchParams.get('page')
+  const limit = searchParams.get('limit')
+
+  const result = paginationSchema.safeParse({
+    page: page ? parseInt(page) : 1,
+    limit: limit ? parseInt(limit) : 50,
+  })
+
+  return result.success ? result.data : { page: 1, limit: 50 }
+}
+
+export function createPaginatedResponse<T>(
+  data: T[],
+  total: number,
+  pagination: PaginationInput
+): PaginatedResponse<T> {
+  const totalPages = Math.ceil(total / pagination.limit)
+
+  return {
+    data,
+    pagination: {
+      page: pagination.page,
+      limit: pagination.limit,
+      total,
+      totalPages,
+      hasNext: pagination.page < totalPages,
+      hasPrev: pagination.page > 1,
+    },
+  }
 }
