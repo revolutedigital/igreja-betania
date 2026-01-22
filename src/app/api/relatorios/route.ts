@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { NextResponse } from 'next/server'
+import { createHandler, apiSuccess, logger } from '@/lib/api-utils'
 
 interface Presenca {
   id: string
@@ -30,8 +30,11 @@ interface CultoComCount {
   }
 }
 
-export async function GET() {
-  try {
+export const GET = createHandler(
+  { rateLimit: true },
+  async (_request, { ip }) => {
+    logger.info('Gerando relatórios', { ip })
+
     const hoje = new Date()
     hoje.setHours(0, 0, 0, 0)
 
@@ -112,7 +115,13 @@ export async function GET() {
         : 0,
     }))
 
-    return NextResponse.json({
+    logger.info('Relatórios gerados', {
+      totalMembros,
+      ausentes: ausentes.length,
+      aniversariantes: aniversariantes.length
+    })
+
+    return apiSuccess({
       totalMembros,
       membrosGrupoPequeno,
       ausentes: ausentes.map((m: MembroComPresencas) => ({
@@ -137,11 +146,5 @@ export async function GET() {
         presentes: c._count.presencas,
       })),
     })
-  } catch (error) {
-    console.error('Erro ao gerar relatórios:', error)
-    return NextResponse.json(
-      { error: 'Erro ao gerar relatórios' },
-      { status: 500 }
-    )
   }
-}
+)

@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server'
+import { createHandler, apiSuccess, apiError, logger } from '@/lib/api-utils'
+import { whatsappSchema } from '@/lib/validations'
 import {
   initWhatsApp,
   getConnectionStatus,
@@ -8,72 +9,78 @@ import {
   messageTemplates,
 } from '@/lib/whatsapp/client'
 
-export async function GET() {
-  try {
+export const GET = createHandler(
+  { rateLimit: true },
+  async (request, { ip }) => {
+    logger.info('Obtendo status WhatsApp', { ip })
     const status = getConnectionStatus()
-    return NextResponse.json(status)
-  } catch (error) {
-    console.error('Erro ao obter status:', error)
-    return NextResponse.json({ error: 'Erro ao obter status' }, { status: 500 })
+    return apiSuccess(status)
   }
-}
+)
 
-export async function POST(request: Request) {
-  try {
-    const body = await request.json()
-    const { action, phone, message, messages, template, nome } = body
+export const POST = createHandler(
+  { rateLimit: true, schema: whatsappSchema },
+  async (request, { body, ip }) => {
+    const { action, phone, message, messages, template, nome } = body as {
+      action: string
+      phone?: string
+      message?: string
+      messages?: Array<{ phone: string; message: string }>
+      template?: string
+      nome?: string
+    }
+
+    logger.info('Ação WhatsApp', { action, ip })
 
     switch (action) {
-      case 'connect':
+      case 'connect': {
         const connectResult = await initWhatsApp()
-        return NextResponse.json(connectResult)
+        logger.info('WhatsApp conectado', { ip })
+        return apiSuccess(connectResult)
+      }
 
-      case 'disconnect':
+      case 'disconnect': {
         await disconnectWhatsApp()
-        return NextResponse.json({ success: true })
+        logger.info('WhatsApp desconectado', { ip })
+        return apiSuccess({ success: true })
+      }
 
-      case 'send':
+      case 'send': {
         if (!phone || !message) {
-          return NextResponse.json(
-            { error: 'Telefone e mensagem são obrigatórios' },
-            { status: 400 }
-          )
+          return apiError('Telefone e mensagem são obrigatórios', 400)
         }
         const sendResult = await sendMessage(phone, message)
-        return NextResponse.json(sendResult)
+        logger.info('Mensagem enviada', { phone, ip })
+        return apiSuccess(sendResult)
+      }
 
-      case 'send-template':
+      case 'send-template': {
         if (!phone || !template || !nome) {
-          return NextResponse.json(
-            { error: 'Telefone, template e nome são obrigatórios' },
-            { status: 400 }
-          )
+          return apiError('Telefone, template e nome são obrigatórios', 400)
         }
         const templateFn = messageTemplates[template as keyof typeof messageTemplates]
         if (!templateFn) {
-          return NextResponse.json({ error: 'Template não encontrado' }, { status: 400 })
+          return apiError('Template não encontrado', 400)
         }
         const templateMessage = typeof templateFn === 'function'
-          ? templateFn(nome, message)
+          ? templateFn(nome, message || '')
           : templateFn
         const templateResult = await sendMessage(phone, templateMessage)
-        return NextResponse.json(templateResult)
+        logger.info('Template enviado', { phone, template, ip })
+        return apiSuccess(templateResult)
+      }
 
-      case 'send-bulk':
+      case 'send-bulk': {
         if (!messages || !Array.isArray(messages)) {
-          return NextResponse.json(
-            { error: 'Lista de mensagens é obrigatória' },
-            { status: 400 }
-          )
+          return apiError('Lista de mensagens é obrigatória', 400)
         }
         const bulkResult = await sendBulkMessages(messages)
-        return NextResponse.json({ results: bulkResult })
+        logger.info('Mensagens em massa enviadas', { count: messages.length, ip })
+        return apiSuccess({ results: bulkResult })
+      }
 
       default:
-        return NextResponse.json({ error: 'Ação não reconhecida' }, { status: 400 })
+        return apiError('Ação não reconhecida', 400)
     }
-  } catch (error) {
-    console.error('Erro na API WhatsApp:', error)
-    return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
   }
-}
+)

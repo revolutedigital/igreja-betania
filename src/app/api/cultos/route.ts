@@ -1,8 +1,12 @@
 import { prisma } from '@/lib/prisma'
-import { NextRequest, NextResponse } from 'next/server'
+import { createHandler, apiSuccess, apiError, logger } from '@/lib/api-utils'
+import { cultoSchema } from '@/lib/validations'
 
-export async function GET() {
-  try {
+export const GET = createHandler(
+  { rateLimit: true },
+  async (request, { ip }) => {
+    logger.info('Buscando cultos', { ip })
+
     const cultos = await prisma.culto.findMany({
       orderBy: { data: 'desc' },
       include: {
@@ -12,27 +16,16 @@ export async function GET() {
       },
     })
 
-    return NextResponse.json(cultos)
-  } catch (error) {
-    console.error('Erro ao buscar cultos:', error)
-    return NextResponse.json(
-      { error: 'Erro ao buscar cultos' },
-      { status: 500 }
-    )
+    return apiSuccess(cultos)
   }
-}
+)
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { data, horario } = body
+export const POST = createHandler(
+  { rateLimit: true, schema: cultoSchema },
+  async (request, { body, ip }) => {
+    const { data, horario } = body as { data: string; horario: string }
 
-    if (!data || !horario) {
-      return NextResponse.json(
-        { error: 'Data e horário são obrigatórios' },
-        { status: 400 }
-      )
-    }
+    logger.info('Criando culto', { data, horario, ip })
 
     // Verifica se já existe culto nessa data/horário
     const cultoExistente = await prisma.culto.findFirst({
@@ -43,7 +36,8 @@ export async function POST(request: NextRequest) {
     })
 
     if (cultoExistente) {
-      return NextResponse.json(cultoExistente)
+      logger.info('Culto existente retornado', { id: cultoExistente.id })
+      return apiSuccess(cultoExistente)
     }
 
     const culto = await prisma.culto.create({
@@ -53,12 +47,8 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    return NextResponse.json(culto, { status: 201 })
-  } catch (error) {
-    console.error('Erro ao criar culto:', error)
-    return NextResponse.json(
-      { error: 'Erro ao criar culto' },
-      { status: 500 }
-    )
+    logger.info('Culto criado', { id: culto.id })
+
+    return apiSuccess(culto, 201)
   }
-}
+)

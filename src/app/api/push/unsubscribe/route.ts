@@ -1,15 +1,30 @@
-import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { createHandler, apiSuccess, apiError, logger } from '@/lib/api-utils'
+import { z } from 'zod'
 
-export async function POST(request: Request) {
-  try {
-    const { endpoint } = await request.json()
+const unsubscribeSchema = z.object({
+  endpoint: z.string().url('Endpoint inválido'),
+})
 
-    // Em produção, remover do banco de dados
-    console.log('Subscription removida:', endpoint)
+export const POST = createHandler(
+  { rateLimit: true, schema: unsubscribeSchema },
+  async (_request, { body, ip }) => {
+    const { endpoint } = body as { endpoint: string }
 
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error('Erro ao remover subscription:', error)
-    return NextResponse.json({ error: 'Erro ao remover' }, { status: 500 })
+    logger.info('Removendo push subscription', { ip })
+
+    // Remover do banco de dados
+    const deleted = await prisma.pushSubscription.deleteMany({
+      where: { endpoint },
+    })
+
+    if (deleted.count === 0) {
+      logger.warn('Subscription não encontrada', { ip })
+      return apiError('Subscription não encontrada', 404)
+    }
+
+    logger.info('Push subscription removida', { ip })
+
+    return apiSuccess({ success: true })
   }
-}
+)

@@ -1,28 +1,47 @@
-import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { createHandler, apiSuccess, apiError, logger } from '@/lib/api-utils'
+import { pushSubscriptionSchema } from '@/lib/validations'
 
-// Em uma implementação real, você armazenaria as subscriptions no banco de dados
-// Por enquanto, vamos manter em memória (não persiste entre reinicializações)
-const subscriptions: Map<string, PushSubscription> = new Map()
+export const POST = createHandler(
+  { rateLimit: true, schema: pushSubscriptionSchema },
+  async (_request, { body, ip }) => {
+    const subscription = body as {
+      endpoint: string
+      keys: {
+        p256dh: string
+        auth: string
+      }
+    }
 
-export async function POST(request: Request) {
-  try {
-    const subscription = await request.json()
+    logger.info('Registrando push subscription', { ip })
 
-    // Armazenar subscription (em produção, salvar no banco)
-    subscriptions.set(subscription.endpoint, subscription)
+    // Salvar no banco de dados (upsert para evitar duplicatas)
+    await prisma.pushSubscription.upsert({
+      where: { endpoint: subscription.endpoint },
+      update: {
+        p256dh: subscription.keys.p256dh,
+        auth: subscription.keys.auth,
+      },
+      create: {
+        endpoint: subscription.endpoint,
+        p256dh: subscription.keys.p256dh,
+        auth: subscription.keys.auth,
+      },
+    })
 
-    console.log('Nova subscription de push registrada')
+    logger.info('Push subscription registrada', { ip })
 
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error('Erro ao registrar subscription:', error)
-    return NextResponse.json({ error: 'Erro ao registrar' }, { status: 500 })
+    return apiSuccess({ success: true }, 201)
   }
-}
+)
 
-export async function GET() {
-  return NextResponse.json({
-    count: subscriptions.size,
-  })
-}
+export const GET = createHandler(
+  { rateLimit: true },
+  async (_request, { ip }) => {
+    logger.info('Contando push subscriptions', { ip })
+
+    const count = await prisma.pushSubscription.count()
+
+    return apiSuccess({ count })
+  }
+)

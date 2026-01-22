@@ -50,6 +50,19 @@ export const whatsappMessageSchema = z.object({
   mensagem: z.string().min(1, 'Mensagem obrigatória').max(4096),
 })
 
+// WhatsApp API route schema
+export const whatsappSchema = z.object({
+  action: z.enum(['connect', 'disconnect', 'send', 'send-template', 'send-bulk']),
+  phone: z.string().min(10).optional(),
+  message: z.string().max(4096).optional(),
+  messages: z.array(z.object({
+    phone: z.string().min(10),
+    message: z.string().max(4096),
+  })).optional(),
+  template: z.string().optional(),
+  nome: z.string().optional(),
+})
+
 export const whatsappBulkSchema = z.object({
   membrosIds: z.array(z.string().cuid()).min(1, 'Selecione pelo menos 1 membro'),
   template: z.enum(['ausencia', 'aniversario', 'boasVindas', 'lembreteCulto', 'custom']),
